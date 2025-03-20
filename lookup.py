@@ -116,103 +116,115 @@ def search_queue_details(access_token, search_text):
     response.raise_for_status()
     return response.json()
 
+def prompt_user_for_query(args):
+    """Prompt user if no CLI arguments are provided."""
+    search_types = [QUERY_USERID, QUERY_USERNAME, QUERY_QUEUEID, QUERY_QUEUENAME, QUERY_INTERACTION]
+    questions = [inquirer.List('query_type', message="What kind of lookup would you like?", choices=search_types)]
+    selected_search = inquirer.prompt(questions)
+    query_type = selected_search['query_type']
+    search_text = input("Search value:").strip()
+
+    query_map = {
+        QUERY_USERID: "user_id",
+        QUERY_USERNAME: "user_name",
+        QUERY_QUEUEID: "queue_id",
+        QUERY_QUEUENAME: "queue_name",
+        QUERY_INTERACTION: "interaction"
+    }
+
+    if query_type in query_map:
+        setattr(args, query_map[query_type], [search_text] if "id" in query_map[query_type] else search_text)
+
+
+def process_interaction(access_token, interaction_id):
+    """Fetch and display interaction details."""
+    interaction_data = fetch_interaction(access_token, interaction_id)
+    print('#######################################################')
+    print(f'#  Interaction {interaction_id}')
+    print('#######################################################')
+    print(f'Start Time: {interaction_data.get("startTime", "??")}')
+    for participant in interaction_data.get('participants', []):
+        print(f'{participant.get("purpose", "UNK")} — {participant.get("name", "UNK")}')
+        attributes = participant.get('attributes', {})
+        for key, value in attributes.items():
+            print(f'{key}: {value}')
+    print('Copy Conversation URL? (Y/n)', end='', flush=True)
+    if readchar.readchar() != 'n':
+        url = f'https://apps.{GENESYS_CLOUD_REGION}/directory/#/analytics/interactions/{interaction_id}/admin/details'
+        pyperclip.copy(url)
+
+
+def process_users(access_token, user_ids):
+    """Fetch and display user details."""
+    print('Getting User(s)')
+    for user_id in user_ids:
+        try:
+            user_data = fetch_user_details(access_token, user_id)
+            print(f"{user_data.get('name')} ({user_data.get('email')})")
+        except requests.HTTPError:
+            print(f"Failed to fetch details for user {user_id}")
+        time.sleep(0.25)
+
+
+def process_queues(access_token, queue_ids):
+    """Fetch and display queue details."""
+    print('Getting Queue(s)')
+    for queue_id in queue_ids:
+        try:
+            queue_data = fetch_queue_details(access_token, queue_id)
+            print(f"{queue_data.get('name')} : {queue_id}")
+        except requests.HTTPError:
+            print(f"Failed to fetch details for queue {queue_id}")
+        time.sleep(0.25)
+
+
+def search_users(access_token, search_text):
+    """Search for users by name."""
+    print('Finding User(s)')
+    user_data = search_user_details(access_token, search_text)
+    for user in user_data.get('results', []):
+        print(f"{user.get('name')}, {user.get('email')}, {user.get('id')}")
+
+
+def search_queues(access_token, search_text):
+    """Search for queues by name."""
+    print('Finding Queue(s)')
+    queue_data = search_queue_details(access_token, search_text)
+    for queue in queue_data.get('entities', []):
+        print(f"{queue.get('name')}, {queue.get('id')}")
+
+
 def main():
     setup_env()
 
     parser = argparse.ArgumentParser(description="Fetch user details from Genesys Cloud")
-    parser.add_argument("-u", "--user_id", nargs='+', required=False, help="List of User GUIDs")
-    parser.add_argument("-un", "--user_name", required=False, help="Search text for User by given name")
-    parser.add_argument("-q", "--queue_id", nargs='+', required=False, help="List of Queue GUIDs")
-    parser.add_argument("-qn", "--queue_name", required=False, help="Search text for Queue by name.")
-    parser.add_argument("-i", "--interaction", required=False, help="Show Interaction Details")
+    parser.add_argument("-u", "--user_id", nargs='+', help="List of User GUIDs")
+    parser.add_argument("-un", "--user_name", help="Search text for User by given name")
+    parser.add_argument("-q", "--queue_id", nargs='+', help="List of Queue GUIDs")
+    parser.add_argument("-qn", "--queue_name", help="Search text for Queue by name.")
+    parser.add_argument("-i", "--interaction", help="Show Interaction Details")
     args = parser.parse_args()
 
     access_token = get_access_token()
 
-    if not args.queue_name and not args.user_name and not args.queue_id and not args.user_id and not args.interaction:
-        #prompt for information
-        global QUERY_USERID, QUERY_USERNAME, QUERY_QUEUEID, QUERY_QUEUENAME, QUERY_INTERACTION
-        search_types = [QUERY_USERID, QUERY_USERNAME, QUERY_QUEUEID, QUERY_QUEUENAME, QUERY_INTERACTION]
-        questions = [inquirer.List('query_type', message="What kind of lookup would you like?", choices=search_types)]
-        selected_search = inquirer.prompt(questions)
-        query_type = selected_search['query_type']
+    if not any([args.queue_name, args.user_name, args.queue_id, args.user_id, args.interaction]):
+        prompt_user_for_query(args)
 
-        searchText = input("Search value:").strip()
+    if args.interaction:
+        process_interaction(access_token, args.interaction)
 
-        query_map = {
-            QUERY_USERID: "user_id",
-            QUERY_USERNAME: "user_name",
-            QUERY_QUEUEID: "queue_id",
-            QUERY_QUEUENAME: "queue_name",
-            QUERY_INTERACTION: "interaction"
-        }
+    if args.user_id:
+        process_users(access_token, args.user_id)
 
-        if query_type in query_map:
-            setattr(args, query_map[query_type], [searchText] if "id" in query_map[query_type] else searchText)
+    if args.queue_id:
+        process_queues(access_token, args.queue_id)
 
-
-    if args.interaction and len(args.interaction) > 0:
-        interaction_data = fetch_interaction(access_token, args.interaction)
-        print('#######################################################')
-        print(f'#  Interaction {args.interaction}')
-        print('#######################################################')
-        #print(json.dumps(interaction_data, indent=4))
-        print(f'Start Time: {interaction_data.get('startTime','??')}')
-        for participant in interaction_data.get('participants',[]):
-            print(f'{participant.get('purpose', 'UNK')} — {participant.get('name', 'UNK')}')
-            attributes = participant.get('attributes', {})
-            for key, value in attributes.items():
-                print(f'{key}:{value}')
-        print('Copy Conversation URL? (Y/n)', end='', flush=True)
-        pop = readchar.readchar()
-        print('')
-        if (pop != 'n'):
-            url = f'https://apps.{GENESYS_CLOUD_REGION}/directory/#/analytics/interactions/{args.interaction}/admin/details'
-            pyperclip.copy(url)
-            # could also import webbrowser and pop: webbrowser.open_new_tab(url)
-
-
-    if args.user_id and len(args.user_id) > 0:
-        print('Getting User(s)')
-        for user_id in args.user_id:
-            try:
-                user_data = fetch_user_details(access_token, user_id)
-                #if args.inactive and user_data.get('state') != 'inactive':
-                #    continue
-                print(f"{user_data.get('name')} ({user_data.get('email')})")
-            except requests.HTTPError:
-                print(f"Failed to fetch details for user {user_id}")
-            time.sleep(0.25)
-
-    if args.queue_id and len(args.queue_id) > 0:
-        print('Getting Queue(s)')
-        for queue_id in args.queue_id:
-            try:
-                queue_data = fetch_queue_details(access_token, queue_id)
-                print(f"{queue_data.get('name')} : {queue_id}")
-            except requests.HTTPError:
-                print(f"Failed to fetch details for user {queue_id}")
-            time.sleep(0.25)
-
-    if args.user_name and len(args.user_name) > 0:
-        print('Finding User(s)')
-        user_data = search_user_details(access_token, args.user_name)
-        for user in user_data.get('results',[]):
-            try:
-                print(f"{user.get('name')}, {user.get('email')}, {user.get('id')}")
-            except requests.HTTPError:
-                print(f"Failed to fetch details for user {args.user_name}")
-            time.sleep(0.25)
+    if args.user_name:
+        search_users(access_token, args.user_name)
 
     if args.queue_name:
-        print('Finding Queue(s)')
-        queue_data = search_queue_details(access_token, args.queue_name)
-        for queue in queue_data.get('entities',[]):
-            try:
-                print(f"{queue.get('name')}, {queue.get('id')}")
-            except requests.HTTPError:
-                print(f"Failed to fetch details for queue {args.queue_name}")
-            time.sleep(0.25)
+        search_queues(access_token, args.queue_name)
+
 
 
 
