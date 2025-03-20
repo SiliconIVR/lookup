@@ -5,3 +5,4 @@ nuitka
 inquirer
 pyperclip
 readchar
+keyring
