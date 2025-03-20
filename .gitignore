@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+#env
+find_env/
+
 # C extensions
 *.so
 
@@ -14,6 +17,9 @@ dist/
 downloads/
 eggs/
 .eggs/
+lookup.dist/
+lookup.build/
+lookup.onefile-build/
 lib/
 lib64/
 parts/

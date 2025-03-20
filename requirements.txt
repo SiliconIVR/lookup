@@ -1,0 +1,7 @@
+requests
+dotenv
+cryptography
+nuitka
+inquirer
+pyperclip
+readchar
