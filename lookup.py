@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import pyperclip
 import argparse
@@ -233,6 +234,8 @@ def prompt_user_for_query(args):
         inquirer.List("query_type", message="What kind of lookup would you like?", choices=search_types)
     ]
     selected_search = inquirer.prompt(questions)
+    if selected_search is None:
+                sys.exit(0) #exit
     query_type = selected_search["query_type"]
     search_text = input("Search value:").strip()
 
@@ -322,8 +325,10 @@ def main():
     # Determine configuration to use
     if args.new_config:
         config = create_new_config()
+        sys.exit(0)
     elif args.edit_config:
         config = edit_config()
+        sys.exit(0)
     else:
         configs = get_stored_configs()
         if args.org:
